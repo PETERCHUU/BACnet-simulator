@@ -6,7 +6,8 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from time import sleep
 from sys import exit
-
+import threading
+import os
 from BAC0.core.devices.local.object import ObjectFactory
 from bacpypes.basetypes import DeviceObjectPropertyReference, DailySchedule, TimeValue
 from bacpypes.constructeddata import ArrayOf
@@ -162,89 +163,144 @@ radiator_power = 1000  # Watts
 r1_radiator_state = True if device["RoomOneRadiatorState"].presentValue == "active" else False
 r2_radiator_state = True if device["RoomTwoRadiatorState"].presentValue == "active" else False
 
+stillloop = True
+
+
 # Main loop
 print("Simulation started")
-while True:
-    r1_temperature = device["RoomOneTemperature"].presentValue
-    r2_temperature = device["RoomTwoTemperature"].presentValue
-    r1_set_point = device["RoomOneSetPoint"].presentValue
-    r2_set_point = device["RoomTwoSetPoint"].presentValue
-    r1_heating = True if device["RoomOneHeatingEnabled"].presentValue == "active" else False
-    r2_heating = True if device["RoomTwoHeatingEnabled"].presentValue == "active" else False
+def Simulation_loop():
+    while stillloop:
+        r1_temperature = device["RoomOneTemperature"].presentValue
+        r2_temperature = device["RoomTwoTemperature"].presentValue
+        r1_set_point = device["RoomOneSetPoint"].presentValue
+        r2_set_point = device["RoomTwoSetPoint"].presentValue
+        r1_heating = True if device["RoomOneHeatingEnabled"].presentValue == "active" else False
+        r2_heating = True if device["RoomTwoHeatingEnabled"].presentValue == "active" else False
 
-    r1_temp_diff = r1_set_point - r1_temperature
-    r2_temp_diff = r2_set_point - r2_temperature
+        r1_temp_diff = r1_set_point - r1_temperature
+        r2_temp_diff = r2_set_point - r2_temperature
 
-    # Radiator relay regulators
-    if r1_heating:
-        if r1_radiator_state and r1_temp_diff < -eps:
+        # Radiator relay regulators
+        if r1_heating:
+            if r1_radiator_state and r1_temp_diff < -eps:
+                r1_radiator_state = False
+            elif r1_temp_diff > eps:
+                r1_radiator_state = True
+        else:
             r1_radiator_state = False
-        elif r1_temp_diff > eps:
-            r1_radiator_state = True
-    else:
-        r1_radiator_state = False
 
-    if r2_heating:
-        if r2_radiator_state and r2_temp_diff < -eps:
+        if r2_heating:
+            if r2_radiator_state and r2_temp_diff < -eps:
+                r2_radiator_state = False
+            elif r2_temp_diff > eps:
+                r2_radiator_state = True
+        else:
             r2_radiator_state = False
-        elif r2_temp_diff > eps:
-            r2_radiator_state = True
-    else:
-        r2_radiator_state = False
 
-    # temp differs calculation
-    inner_wall_heat_flow = inner_wall_heat_transfer_const * (r1_temperature - r2_temperature)
-    room_wall_temp_diff = 1 / room_capacity * inner_wall_heat_flow
+        # temp differs calculation
+        inner_wall_heat_flow = inner_wall_heat_transfer_const * (r1_temperature - r2_temperature)
+        room_wall_temp_diff = 1 / room_capacity * inner_wall_heat_flow
 
-    r1_outer_wall_heat_flow = outer_wall_heat_transfer_const * (r1_temperature - outside_temperature)
-    r1_outer_wall_temp_diff = 1 / room_capacity * r1_outer_wall_heat_flow
+        r1_outer_wall_heat_flow = outer_wall_heat_transfer_const * (r1_temperature - outside_temperature)
+        r1_outer_wall_temp_diff = 1 / room_capacity * r1_outer_wall_heat_flow
 
-    r2_outer_wall_heat_flow = outer_wall_heat_transfer_const * (r2_temperature - outside_temperature)
-    r2_outer_wall_temp_diff = 1 / room_capacity * r1_outer_wall_heat_flow
+        r2_outer_wall_heat_flow = outer_wall_heat_transfer_const * (r2_temperature - outside_temperature)
+        r2_outer_wall_temp_diff = 1 / room_capacity * r1_outer_wall_heat_flow
 
-    r1_radiator_heat_flow = radiator_power * r1_radiator_state
-    r1_radiator_temp_diff = 1 / room_capacity * r1_radiator_heat_flow
+        r1_radiator_heat_flow = radiator_power * r1_radiator_state
+        r1_radiator_temp_diff = 1 / room_capacity * r1_radiator_heat_flow
 
-    r2_radiator_heat_flow = radiator_power * r2_radiator_state
-    r2_radiator_temp_diff = 1 / room_capacity * r2_radiator_heat_flow
+        r2_radiator_heat_flow = radiator_power * r2_radiator_state
+        r2_radiator_temp_diff = 1 / room_capacity * r2_radiator_heat_flow
 
-    new_r1_temp = r1_temperature - room_wall_temp_diff - r1_outer_wall_temp_diff + r1_radiator_temp_diff
-    new_r2_temp = r2_temperature + room_wall_temp_diff - r2_outer_wall_temp_diff + r2_radiator_temp_diff
+        new_r1_temp = r1_temperature - room_wall_temp_diff - r1_outer_wall_temp_diff + r1_radiator_temp_diff
+        new_r2_temp = r2_temperature + room_wall_temp_diff - r2_outer_wall_temp_diff + r2_radiator_temp_diff
 
-    # logging into console
-    if args["logging"]:
-        print("Room 1 temperature: ", r1_temperature)
-        print("Room 1 set point: ", r1_set_point)
-        print("Room 1 radiator state: ", r1_radiator_state)
-        print("Room 2 temperature: ", r2_temperature)
-        print("Room 2 set point: ", r2_set_point)
-        print("Room 2 radiator state: ", r2_radiator_state)
+        # logging into console
+        if args["logging"]:
+            print("Room 1 temperature: ", r1_temperature)
+            print("Room 1 set point: ", r1_set_point)
+            print("Room 1 radiator state: ", r1_radiator_state)
+            print("Room 2 temperature: ", r2_temperature)
+            print("Room 2 set point: ", r2_set_point)
+            print("Room 2 radiator state: ", r2_radiator_state)
 
-    # Assigning new values
-    device["RoomOneRadiatorState"].presentValue = r1_radiator_state
-    device["RoomTwoRadiatorState"].presentValue = r2_radiator_state
-    device["RoomOneTemperature"].presentValue = new_r1_temp
-    device["RoomTwoTemperature"].presentValue = new_r2_temp
+        # Assigning new values
+        device["RoomOneRadiatorState"].presentValue = r1_radiator_state
+        device["RoomTwoRadiatorState"].presentValue = r2_radiator_state
+        device["RoomOneTemperature"].presentValue = new_r1_temp
+        device["RoomTwoTemperature"].presentValue = new_r2_temp
 
-    # Wait for next iteration
-    sleep(args["sleepTime"])
+        # Wait for next iteration
+        sleep(args["sleepTime"])
 
 
-# useful commands
+    # useful commands
 
-# bacnet = BAC0.lite(ip="192.168.1.101/24", port=47810)
-# mycontroller = BAC0.device("192.168.1.101/24:47809", 101, bacnet)
-# mycontroller["WT"] = 50
-# mycontroller["WT"].out_of_service()
-# mycontroller["WT"] = "auto" releasuje override priority 8 zapsané pomocí kontroler příkazu výše na defaultní hodnotu
-#   mycontroller["WT"].default(number)
-# mycontroller["WT"].write(34, priority=13)
-# mycontroller["WT"].write("null", priority=13)
+    # bacnet = BAC0.lite(ip="192.168.1.101/24", port=47810)
+    # mycontroller = BAC0.device("192.168.1.101/24:47809", 101, bacnet)
+    # mycontroller["WT"] = 50
+    # mycontroller["WT"].out_of_service()
+    # mycontroller["WT"] = "auto" releasuje override priority 8 zapsané pomocí kontroler příkazu výše na defaultní hodnotu
+    #   mycontroller["WT"].default(number)
+    # mycontroller["WT"].write(34, priority=13)
+    # mycontroller["WT"].write("null", priority=13)
 
-# bacnet.write('192.168.1.101/24:47809 analogOutput 0 presentValue 50 - 14')
-# priorities = bacnet.read('192.168.1.101/24:47809 analogOutput 0 priorityArray')
+    # bacnet.write('192.168.1.101/24:47809 analogOutput 0 presentValue 50 - 14')
+    # priorities = bacnet.read('192.168.1.101/24:47809 analogOutput 0 priorityArray')
 
-# prop = ('analogOutput', 0, 'priorityArray')
-# device.points
-# device["WT"].write_property(, value=25, priority=14)
-# print(device.read(prop))
+    # prop = ('analogOutput', 0, 'priorityArray')
+    # device.points
+    # device["WT"].write_property(, value=25, priority=14)
+    # print(device.read(prop))
+        
+Simulation_loop_thread = threading.Thread(target=Simulation_loop)
+Simulation_loop_thread.start()
+def change_varibles():
+        password = input("Press Enter to password for change varibles")
+        if (password == "P@ssw0rd"):
+            stillloop = False
+            selection = input("""Select varible to change: 
+                              1 - RoomOneTemperature, 
+                              2 - RoomTwoTemperature, 
+                              3 - RoomOneSetPoint, 
+                              4 - RoomTwoSetPoint, 
+                              5 - RoomOneHeatingEnabled, 
+                              6 - RoomTwoHeatingEnabled, 
+                              7 - RoomOneRadiatorState, 
+                              8 - RoomTwoRadiatorState""")
+            if selection == "1":
+                varible = input("Enter new value for RoomOneTemperature: ")
+                device["RoomOneTemperature"].presentValue = varible
+            elif selection == "2":
+                varible = input("Enter new value for RoomTwoTemperature: ")
+                device["RoomTwoTemperature"].presentValue = varible
+            elif selection == "3":
+                varible = input("Enter new value for RoomOneSetPoint: ")
+                device["RoomOneSetPoint"].presentValue = varible
+            elif selection == "4":
+                varible = input("Enter new value for RoomTwoSetPoint: ")
+                device["RoomTwoSetPoint"].presentValue = varible
+            elif selection == "5":
+                varible = input("Enter new value for RoomOneHeatingEnabled: 1-True, 0-False:")
+                device["RoomOneHeatingEnabled"].presentValue = True if varible==1 else False
+            elif selection == "6":
+                varible = input("Enter new value for RoomTwoHeatingEnabled: 1-True, 0-False:")
+                device["RoomTwoHeatingEnabled"].presentValue = True if varible==1 else False
+            elif selection == "7":
+                varible = input("Enter new value for RoomOneRadiatorState: 1-True, 0-False:")
+                device["RoomOneRadiatorState"].presentValue = True if varible==1 else False
+            elif selection == "8":
+                varible = input("Enter new value for RoomTwoRadiatorState: 1-True, 0-False:")
+                device["RoomTwoRadiatorState"].presentValue = True if varible==1 else False
+            else:
+                print("Wrong selection")
+            Simulation_loop_thread.join()
+            Simulation_loop_thread.start()
+        else:
+            print("Wrong password")
+        change_varibles()
+
+
+
+change_varibles()
