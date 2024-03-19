@@ -7,7 +7,6 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from time import sleep
 from sys import exit
 import threading
-import os
 from BAC0.core.devices.local.object import ObjectFactory
 from bacpypes.basetypes import DeviceObjectPropertyReference, DailySchedule, TimeValue
 from bacpypes.constructeddata import ArrayOf
@@ -160,9 +159,9 @@ room_capacity = 1005 * 1.205 * wall_surface * 4  # 2.5x4x4m
 
 eps = 0.5  # Degrees Celsius
 radiator_power = 1000  # Watts
-r1_radiator_state = True if device["RoomOneRadiatorState"].presentValue == "active" else False
-r2_radiator_state = True if device["RoomTwoRadiatorState"].presentValue == "active" else False
-
+usertest= device["RoomOneHeatingEnabled"].presentValue
+if usertest:
+    print("True")
 stillloop = True
 
 
@@ -174,15 +173,17 @@ def Simulation_loop():
         r2_temperature = device["RoomTwoTemperature"].presentValue
         r1_set_point = device["RoomOneSetPoint"].presentValue
         r2_set_point = device["RoomTwoSetPoint"].presentValue
-        r1_heating = True if device["RoomOneHeatingEnabled"].presentValue == "active" else False
-        r2_heating = True if device["RoomTwoHeatingEnabled"].presentValue == "active" else False
+        r1_heating =  device["RoomOneHeatingEnabled"].presentValue
+        r2_heating =  device["RoomTwoHeatingEnabled"].presentValue 
+        r1_radiator_state = device["RoomOneRadiatorState"].presentValue 
+        r2_radiator_state = device["RoomTwoRadiatorState"].presentValue
 
         r1_temp_diff = r1_set_point - r1_temperature
         r2_temp_diff = r2_set_point - r2_temperature
-
+        
         # Radiator relay regulators
         if r1_heating:
-            if r1_radiator_state and r1_temp_diff < -eps:
+            if r1_radiator_state and (r1_temp_diff < -eps):
                 r1_radiator_state = False
             elif r1_temp_diff > eps:
                 r1_radiator_state = True
@@ -190,7 +191,7 @@ def Simulation_loop():
             r1_radiator_state = False
 
         if r2_heating:
-            if r2_radiator_state and r2_temp_diff < -eps:
+            if r2_radiator_state and (r2_temp_diff < -eps):
                 r2_radiator_state = False
             elif r2_temp_diff > eps:
                 r2_radiator_state = True
